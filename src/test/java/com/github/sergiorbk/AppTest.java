@@ -1,4 +1,4 @@
-package com.github.serhiirybak;
+package com.github.sergiorbk;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 

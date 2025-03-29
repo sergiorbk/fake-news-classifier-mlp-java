@@ -1,4 +1,4 @@
-package com.github.serhiirybak;
+package com.github.sergiorbk;
 
 /**
  * Hello world!
