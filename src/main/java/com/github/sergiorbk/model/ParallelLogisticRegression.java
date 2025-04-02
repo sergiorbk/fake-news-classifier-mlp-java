@@ -1,8 +1,11 @@
 package com.github.sergiorbk.model;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ForkJoinPool;
-import java.util.stream.IntStream;
+import java.util.concurrent.Future;
 
 public class ParallelLogisticRegression extends LogisticRegression {
     private final ForkJoinPool forkJoinPool;
@@ -18,21 +21,27 @@ public class ParallelLogisticRegression extends LogisticRegression {
         for (int iter = 0; iter < numIterations; iter++) {
             final double[] epochLoss = {0};
 
-            forkJoinPool.submit(() ->
-                    IntStream.range(0, (X.length + batchSize - 1) / batchSize)
-                            .parallel()
-                            .forEach(batchIdx -> {
-                                int start = batchIdx * batchSize;
-                                int end = Math.min(start + batchSize, X.length);
-                                double[][] batchX = Arrays.copyOfRange(X, start, end);
-                                double[] batchY = Arrays.copyOfRange(y, start, end);
+            List<Future<Double>> futures = new ArrayList<>();
 
-                                double batchLoss = processBatch(batchX, batchY);
-                                synchronized (epochLoss) {
-                                    epochLoss[0] += batchLoss;
-                                }
-                            })
-            ).join();
+            for (int i = 0; i < X.length; i += batchSize) {
+                final int start = i;
+                final int end = Math.min(i + batchSize, X.length);
+
+                futures.add(forkJoinPool.submit(() -> {
+                    double[][] batchX = Arrays.copyOfRange(X, start, end);
+                    double[] batchY = Arrays.copyOfRange(y, start, end);
+                    return processBatchSequential(batchX, batchY);
+                }));
+            }
+
+            // collect results
+            for (Future<Double> future : futures) {
+                try {
+                    epochLoss[0] += future.get();
+                } catch (InterruptedException | ExecutionException e) {
+                    e.printStackTrace();
+                }
+            }
 
             double accuracy = evaluate(X, y);
             System.out.printf("Par Epoch %d, Loss: %.4f, Accuracy: %.4f\n",
@@ -40,34 +49,36 @@ public class ParallelLogisticRegression extends LogisticRegression {
         }
     }
 
-    private double processBatch(double[][] batchX, double[] batchY) {
-        double[] localGradients = new double[weights.length];
-        double localBiasGradient = 0;
-        double localLoss = 0;
-        double[] currentWeights = this.weights;
+    private double processBatchSequential(double[][] batchX, double[] batchY) {
+        double[] gradients = new double[weights.length];
+        double biasGradient = 0;
+        double batchLoss = 0;
+        double[] currentWeights = this.weights; // local copy
 
         for (int i = 0; i < batchX.length; i++) {
             double prediction = predictProbability(batchX[i]);
             double error = prediction - batchY[i];
 
             for (int j = 0; j < weights.length; j++) {
-                localGradients[j] += error * batchX[i][j];
+                gradients[j] += error * batchX[i][j];
             }
-            localBiasGradient += error;
-            localLoss += computeLoss(batchY[i], prediction);
+            biasGradient += error;
+            batchLoss += computeLoss(batchY[i], prediction);
         }
 
+        // L2 regularization
         for (int j = 0; j < weights.length; j++) {
-            localGradients[j] += l2Lambda * currentWeights[j];
+            gradients[j] += l2Lambda * currentWeights[j];
         }
 
+        // atomic weights update
         synchronized (this) {
             for (int j = 0; j < weights.length; j++) {
-                weights[j] -= learningRate * localGradients[j] / batchX.length;
+                weights[j] -= learningRate * gradients[j] / batchX.length;
             }
-            bias -= learningRate * localBiasGradient / batchX.length;
+            bias -= learningRate * biasGradient / batchX.length;
         }
 
-        return localLoss;
+        return batchLoss;
     }
 }
