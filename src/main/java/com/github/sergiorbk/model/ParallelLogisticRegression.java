@@ -11,8 +11,8 @@ public class ParallelLogisticRegression extends LogisticRegression {
     private final ForkJoinPool forkJoinPool;
 
     public ParallelLogisticRegression(int featureSize, double learningRate,
-                                      int numIterations, int batchSize, double l2Lambda) {
-        super(featureSize, learningRate, numIterations, batchSize, l2Lambda);
+                                      int numIterations, int batchSize, double l2Lambda, long randomSeed) {
+        super(featureSize, learningRate, numIterations, batchSize, l2Lambda, randomSeed);
         this.forkJoinPool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
     }
 
@@ -44,8 +44,9 @@ public class ParallelLogisticRegression extends LogisticRegression {
             }
 
             double accuracy = evaluate(X, y);
-            System.out.printf("Par Epoch %d, Loss: %.4f, Accuracy: %.4f\n",
-                    iter + 1, epochLoss[0] / X.length, accuracy);
+            double avgLoss = epochLoss[0] / X.length;
+            System.out.printf("Par Epoch %d, Loss: %f, Accuracy: %f\n",
+                    iter + 1, avgLoss, accuracy);
         }
     }
 

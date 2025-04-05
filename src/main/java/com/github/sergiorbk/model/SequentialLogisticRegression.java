@@ -1,28 +1,40 @@
 package com.github.sergiorbk.model;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.Arrays;
 
 public class SequentialLogisticRegression extends LogisticRegression {
     public SequentialLogisticRegression(int featureSize, double learningRate,
-                                        int numIterations, int batchSize, double l2Lambda) {
-        super(featureSize, learningRate, numIterations, batchSize, l2Lambda);
+                                        int numIterations, int batchSize, double l2Lambda, long randomSeed) {
+        super(featureSize, learningRate, numIterations, batchSize, l2Lambda, randomSeed);
     }
 
     @Override
     public void train(double[][] X, double[] y) {
-        for (int iter = 0; iter < numIterations; iter++) {
-            double totalLoss = 0;
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter("training_sequential_log.csv"))) {
+            writer.write("Epoch,Loss,Train Accuracy\n");
 
-            for (int i = 0; i < X.length; i += batchSize) {
-                int end = Math.min(i + batchSize, X.length);
-                double[][] batchX = Arrays.copyOfRange(X, i, end);
-                double[] batchY = Arrays.copyOfRange(y, i, end);
-                totalLoss += processBatch(batchX, batchY);
+            for (int iter = 0; iter < numIterations; iter++) {
+                double totalLoss = 0;
+
+                for (int i = 0; i < X.length; i += batchSize) {
+                    int end = Math.min(i + batchSize, X.length);
+                    double[][] batchX = Arrays.copyOfRange(X, i, end);
+                    double[] batchY = Arrays.copyOfRange(y, i, end);
+                    totalLoss += processBatch(batchX, batchY);
+                }
+
+                double accuracy = evaluate(X, y);
+                double avgLoss = totalLoss / X.length;
+
+                System.out.printf("Seq Epoch %d,\t Avg Loss: %f,\t Train Accuracy: %f\n",
+                        iter + 1, avgLoss, accuracy);
+                writer.write(String.format("%d,%.6f,%.6f\n", iter + 1, avgLoss, accuracy));
             }
-
-            double accuracy = evaluate(X, y);
-            System.out.printf("Seq Epoch %d, Loss: %.4f, Accuracy: %.4f\n",
-                    iter + 1, totalLoss / X.length, accuracy);
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
